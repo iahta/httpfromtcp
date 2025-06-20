@@ -1,10 +1,10 @@
 package request
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"strings"
-	"unicode"
 )
 
 type Request struct {
@@ -17,54 +17,68 @@ type RequestLine struct {
 	Method        string
 }
 
+const crlf = "\r\n"
+
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	req, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, fmt.Errorf("error reading request: %v", err)
 	}
-	reqLine, err := parseRequestLine(string(req))
+	reqLine, err := parseRequestLine(req)
 	if err != nil {
 		return nil, fmt.Errorf("error failed to parse request: %v", err)
 	}
 	return &Request{
-		RequestLine: reqLine,
+		RequestLine: *reqLine,
 	}, nil
 }
 
-func parseRequestLine(request string) (RequestLine, error) {
-	parts := strings.Split(request, "\r\n")
-	reqSplit := strings.Split(parts[0], " ")
-	if len(reqSplit) < 3 || len(reqSplit) > 3 {
-		return RequestLine{}, fmt.Errorf("request line must be method, target, version")
+func parseRequestLine(request []byte) (*RequestLine, error) {
+	idx := bytes.Index(request, []byte(crlf))
+	if idx == -1 {
+		return nil, fmt.Errorf("could not find CRLF in request-line")
 	}
-	method := reqSplit[0]
-	requestTarget := reqSplit[1]
-	httpVersion := strings.Split(reqSplit[2], "/")
-	if !IsAllUpper(method) {
-		return RequestLine{}, fmt.Errorf("method must be all capital")
-	}
-	if httpVersion[1] != "1.1" {
-		return RequestLine{}, fmt.Errorf("http version must be 1.1")
-	}
-	if !strings.HasPrefix(requestTarget, "/") {
-		return RequestLine{}, fmt.Errorf("request target missing '/'")
-	}
-	requestLine := RequestLine{
-		HttpVersion:   httpVersion[1],
-		RequestTarget: requestTarget,
-		Method:        method,
+	requestLineText := string(request[:idx])
+	requestLine, err := requestLineFromString(requestLineText)
+	if err != nil {
+		return nil, err
 	}
 	return requestLine, nil
 }
 
-//request-line  = method SP request-target SP HTTP-version
-//				GET       /coffee           HTTP/1.1
+func requestLineFromString(str string) (*RequestLine, error) {
+	parts := strings.Split(str, " ")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("poorly formattred request-line: %s", parts)
+	}
 
-func IsAllUpper(s string) bool {
-	for _, r := range s {
-		if !unicode.IsUpper(r) {
-			return false // Found a non-uppercase character
+	method := parts[0]
+	for _, c := range method {
+		if c < 'A' || c > 'Z' {
+			return nil, fmt.Errorf("invalid method: %s", method)
 		}
 	}
-	return true // All characters were uppercase
+
+	requestTarget := parts[1]
+
+	versionParts := strings.Split(parts[2], "/")
+	if len(versionParts) != 2 {
+		return nil, fmt.Errorf("malformed start-line: %s", str)
+	}
+
+	httpPart := versionParts[0]
+	if httpPart != "HTTP" {
+		return nil, fmt.Errorf("unrecognized HTTP-version: %s", httpPart)
+	}
+
+	version := versionParts[1]
+	if version != "1.1" {
+		return nil, fmt.Errorf("unrecognized HTTP-version: %s", version)
+	}
+
+	return &RequestLine{
+		Method:        method,
+		RequestTarget: requestTarget,
+		HttpVersion:   versionParts[1],
+	}, nil
 }
