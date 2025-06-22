@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+
+	"github.com/iahta/httpfromtcp/internal/request"
 )
 
 func main() {
@@ -23,11 +25,12 @@ func main() {
 		}
 		fmt.Printf("Connection has been accepted\n")
 
-		channelLines := getLinesChannel(conn)
-		for channel := range channelLines {
-			fmt.Printf("%s\n", channel)
+		channelLines, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Fatalf("unable to parse request")
 		}
-		fmt.Printf("Connection has been closed\n")
+
+		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", channelLines.RequestLine.Method, channelLines.RequestLine.RequestTarget, channelLines.RequestLine.HttpVersion)
 	}
 
 }
