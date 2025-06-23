@@ -67,4 +67,17 @@ func TestRequestLineParse(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, done)
 	assert.Equal(t, "localhost:42069", headers["h$st"])
+	// Test: Multiple Values
+	headers = NewHeaders()
+	data = []byte("Accept: application\r\nAccept: */*\r\n\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	require.NotNil(t, headers)
+	assert.Equal(t, "application", headers["accept"])
+	assert.Equal(t, 21, n)
+	assert.False(t, done)
+	_, done2, err2 = headers.Parse(data[n:])
+	require.NoError(t, err2)
+	assert.False(t, done2)
+	assert.Equal(t, "application, */*", headers["accept"])
 }

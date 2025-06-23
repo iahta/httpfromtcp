@@ -3,16 +3,16 @@ package headers
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 )
 
-type Headers map[string]string
-
 const crlf = "\r\n"
 
+type Headers map[string]string
+
 func NewHeaders() Headers {
-	h := make(map[string]string)
-	return h
+	return map[string]string{}
 }
 
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
@@ -24,39 +24,50 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 2, true, nil
 	}
 
-	headerLineText := string(data[:idx])
-	n = idx + 2
+	headerParts := bytes.SplitN(data[:idx], []byte(":"), 2)
+	key := strings.ToLower(string(headerParts[0]))
 
-	colonIndex := strings.IndexByte(headerLineText, ':')
-	if colonIndex == -1 {
-		return 0, false, fmt.Errorf("invalid header: no colon found")
+	if key != strings.TrimRight(key, " ") {
+		return 0, false, fmt.Errorf("invalid header name: %s", key)
 	}
 
-	if colonIndex > 0 && headerLineText[colonIndex-1] == ' ' {
-		return 0, false, fmt.Errorf("invalid header: space before colon")
+	value := bytes.TrimSpace(headerParts[1])
+	key = strings.TrimSpace(key)
+	if !validTokens([]byte(key)) {
+		return 0, false, fmt.Errorf("invalid header token found: %s", key)
 	}
+	h.Set(key, string(value))
+	return idx + 2, false, nil
+}
 
-	key := strings.TrimSpace(headerLineText[:colonIndex])
-	value := strings.TrimSpace(headerLineText[colonIndex+1:])
+var tokenChars = []byte{'!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~'}
 
-	if key == "" {
-		return 0, false, fmt.Errorf("invalid header: empty key")
+func (h Headers) Set(key, value string) {
+	key = strings.ToLower(key)
+	if v, ok := h[key]; ok {
+		value = strings.Join([]string{
+			v,
+			value,
+		}, ", ")
 	}
+	h[key] = value
+}
 
-	for _, c := range key {
-		switch {
-		case 'A' <= c && c <= 'Z':
-		case 'a' <= c && c <= 'z':
-		case '0' <= c && c <= '9':
-		case strings.ContainsRune("!#$%&'*+-.^_|~", c):
-		default:
-			return 0, false, fmt.Errorf("invalid character: %s", key)
+func validTokens(data []byte) bool {
+	for _, c := range data {
+		if !isTokenChar(c) {
+			return false
 		}
 	}
+	return true
+}
 
-	lowerKey := strings.ToLower(key)
+func isTokenChar(c byte) bool {
+	if c >= 'A' && c <= 'Z' ||
+		c >= 'a' && c <= 'z' ||
+		c >= '0' && c <= '9' {
+		return true
+	}
+	return slices.Contains(tokenChars, c)
 
-	h[lowerKey] = value
-
-	return n, false, nil
 }
