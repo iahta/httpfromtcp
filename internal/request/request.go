@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/iahta/httpfromtcp/internal/headers"
 )
 
 type Request struct {
 	RequestLine RequestLine
 	parserState requestState
+	Headers     headers.Headers
 }
 
 type RequestLine struct {
@@ -23,6 +26,7 @@ type requestState int
 
 const (
 	requestStateInitialized requestState = iota
+	requestStateParsingHeaders
 	requestStateDone
 )
 
@@ -114,6 +118,21 @@ func requestLineFromString(str string) (*RequestLine, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+	for r.parserState != requestStateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			break
+		}
+		totalBytesParsed += n
+	}
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.parserState {
 	case requestStateInitialized:
 		reqLine, consumed, err := parseRequestLine(data)
@@ -124,8 +143,19 @@ func (r *Request) parse(data []byte) (int, error) {
 			return 0, nil
 		}
 		r.RequestLine = *reqLine
-		r.parserState = requestStateDone
+		r.parserState = requestStateParsingHeaders
+		r.Headers = headers.NewHeaders()
 		return consumed, nil
+	case requestStateParsingHeaders:
+		n, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, fmt.Errorf("error failed to parse header: %v", err)
+		}
+		if !done {
+			return n, nil
+		}
+		r.parserState = requestStateDone
+		return n, nil
 	case requestStateDone:
 		return 0, fmt.Errorf("error: trying to read data in done state")
 	default:
