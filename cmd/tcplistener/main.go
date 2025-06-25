@@ -30,7 +30,16 @@ func main() {
 			log.Fatalf("unable to parse request")
 		}
 
-		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", channelLines.RequestLine.Method, channelLines.RequestLine.RequestTarget, channelLines.RequestLine.HttpVersion)
+		fmt.Printf("Request line:\n"+
+			"- Method: %s\n"+
+			"- Target: %s\n"+
+			"- Version: %s\n",
+			channelLines.RequestLine.Method, channelLines.RequestLine.RequestTarget,
+			channelLines.RequestLine.HttpVersion)
+		fmt.Printf("Headers:\n")
+		for key, value := range channelLines.Headers {
+			fmt.Printf("- %s: %s\n", key, value)
+		}
 	}
 
 }
