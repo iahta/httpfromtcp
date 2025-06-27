@@ -40,6 +40,7 @@ func main() {
 		for key, value := range channelLines.Headers {
 			fmt.Printf("- %s: %s\n", key, value)
 		}
+		fmt.Printf("Body:\n")
+		fmt.Printf("%s", string(channelLines.Body))
 	}
-
 }
