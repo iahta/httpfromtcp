@@ -1,24 +1,30 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strconv"
 	"sync/atomic"
+
+	"github.com/iahta/httpfromtcp/internal/request"
+	"github.com/iahta/httpfromtcp/internal/response"
 )
 
 type Server struct {
 	Listener net.Listener
+	Handler  Handler
 	Closed   atomic.Bool
 }
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, h Handler) (*Server, error) {
 	l, err := net.Listen("tcp", ":"+strconv.Itoa(port))
 	if err != nil {
 		return nil, fmt.Errorf("unable to serve listener: %v", err)
 	}
 	server := &Server{
 		Listener: l,
+		Handler:  h,
 	}
 
 	go server.listen()
@@ -27,15 +33,14 @@ func Serve(port int) (*Server, error) {
 
 func (s *Server) Close() error {
 	s.Closed.Store(true)
-
-	if s.Closed.CompareAndSwap(false, true) {
-		fmt.Printf("Successfully closed server")
+	if s.Listener != nil {
+		return s.Listener.Close()
 	}
 	return nil
 }
 
 func (s *Server) listen() {
-	for !s.Closed.Load() {
+	for {
 		conn, err := s.Listener.Accept()
 		if err != nil {
 			if s.Closed.Load() {
@@ -43,22 +48,32 @@ func (s *Server) listen() {
 			}
 			fmt.Printf("error making connection: %v", err)
 		}
-		if conn != nil {
-			go s.handle(conn)
-		}
+		go s.handle(conn)
 	}
 }
 
 func (s *Server) handle(conn net.Conn) {
-	resp := []byte("HTTP/1.1 200 OK\r\n" +
-		"Content-Type: text/plain\r\n\r\n" +
-		"Hello World!",
-	)
-
 	defer conn.Close()
-	_, err := conn.Write(resp)
+	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		fmt.Printf("error writing response: %v", err)
+		hErr := &HandlerError{
+			StatusCode: response.StatusBadRequest,
+			Message:    err.Error(),
+		}
+		hErr.Write(conn)
+		return
 	}
+	buf := bytes.NewBuffer([]byte{})
+	hErr := s.Handler(buf, req)
+	if hErr != nil {
+		hErr.Write(conn)
+		return
+	}
+	b := buf.Bytes()
+	response.WriteStatusLine(conn, response.StatusOK)
+	headers := response.GetDefaultHeaders(len(b))
+	response.WriteHeaders(conn, headers)
+	conn.Write(b)
+	return
 
 }
