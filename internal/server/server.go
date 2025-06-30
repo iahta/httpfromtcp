@@ -55,7 +55,6 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	w := response.NewWriter(conn)
 	req, err := request.RequestFromReader(conn)
-	//parse connection request
 	if err != nil {
 		w.WriteStatusLine(response.StatusBadRequest)
 		body := []byte(fmt.Sprintf("Error parsing request: %v", err))

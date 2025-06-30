@@ -58,6 +58,11 @@ func (h Headers) Override(key, value string) {
 	h[key] = value
 }
 
+func (h Headers) OverrideContentLength() {
+	delete(h, strings.ToLower("Content-Length"))
+	h[strings.ToLower("Transfer-Encoding")] = "chunked"
+}
+
 func validTokens(data []byte) bool {
 	for _, c := range data {
 		if !isTokenChar(c) {

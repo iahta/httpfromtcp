@@ -1,9 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/iahta/httpfromtcp/internal/request"
@@ -36,8 +40,48 @@ func handler(w *response.Writer, req *request.Request) {
 	if req.RequestLine.RequestTarget == "/myproblem" {
 		handler500(w, req)
 	}
+
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
+		target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+		route := fmt.Sprintf("https://httpbin.org/%s", target)
+		req.RequestLine.RequestTarget = route
+		httpHandler(w, req)
+		return
+
+	}
+
 	handler200(w, req)
 	return
+}
+
+func httpHandler(w *response.Writer, req *request.Request) {
+	buf := make([]byte, 32, 32)
+	resp, err := http.Get(req.RequestLine.RequestTarget)
+	if err != nil {
+		handler400(w, req)
+		return
+	}
+	defer resp.Body.Close()
+	w.WriteStatusLine(response.StatusOK)
+	h := response.GetDefaultHeaders(0)
+	h.OverrideContentLength()
+	w.WriteHeaders(h)
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			w.WriteChunkedBody(buf[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			handler500(w, req)
+			return
+		}
+		fmt.Printf("%v\n", n)
+	}
+	w.WriteChunkedBodyDone()
 }
 
 func handler400(w *response.Writer, _ *request.Request) {
