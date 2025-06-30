@@ -44,6 +44,10 @@ func handler(w *response.Writer, req *request.Request) {
 		handler500(w, req)
 	}
 
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/video") {
+		videoHandler(w, req)
+	}
+
 	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
 		target := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
 		route := fmt.Sprintf("https://httpbin.org/%s", target)
@@ -55,6 +59,30 @@ func handler(w *response.Writer, req *request.Request) {
 
 	handler200(w, req)
 	return
+}
+
+func videoHandler(w *response.Writer, req *request.Request) {
+	data, err := os.ReadFile("./assets/vim.mp4")
+	if err != nil {
+		fmt.Printf("error reading file: %v", err)
+		handler500(w, req)
+		return
+	}
+	w.WriteStatusLine(response.StatusOK)
+	h := response.GetDefaultHeaders(len(data))
+	h.Override("Content-Type", "video/mp4")
+	err = w.WriteHeaders(h)
+	if err != nil {
+		fmt.Printf("error writing headers: %v", err)
+		handler500(w, req)
+		return
+	}
+	_, err = w.WriteBody(data)
+	if err != nil {
+		fmt.Printf("error writing body: %v", err)
+		handler500(w, req)
+		return
+	}
 }
 
 func httpHandler(w *response.Writer, req *request.Request) {
