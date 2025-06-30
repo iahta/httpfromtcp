@@ -1,15 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/iahta/httpfromtcp/internal/headers"
 	"github.com/iahta/httpfromtcp/internal/request"
 	"github.com/iahta/httpfromtcp/internal/response"
 	"github.com/iahta/httpfromtcp/internal/server"
@@ -65,11 +68,15 @@ func httpHandler(w *response.Writer, req *request.Request) {
 	w.WriteStatusLine(response.StatusOK)
 	h := response.GetDefaultHeaders(0)
 	h.OverrideContentLength()
+	h.Set("Trailer", "X-Content-SHA256")
+	h.Set("Trailer", "X-Content-Length")
 	w.WriteHeaders(h)
 
+	body := []byte{}
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			body = append(body, buf[:n]...)
 			w.WriteChunkedBody(buf[:n])
 		}
 		if err == io.EOF {
@@ -82,6 +89,16 @@ func httpHandler(w *response.Writer, req *request.Request) {
 		fmt.Printf("%v\n", n)
 	}
 	w.WriteChunkedBodyDone()
+	sum := sha256.Sum256(body)
+	t := headers.NewHeaders()
+	bodyLen := strconv.Itoa(len(body))
+	t.Set("X-Content-SHA256", fmt.Sprintf("%x", sum))
+	t.Set("X-Content-Length", bodyLen)
+	err = w.WriteTrailers(t)
+	if err != nil {
+		handler500(w, req)
+		return
+	}
 }
 
 func handler400(w *response.Writer, _ *request.Request) {

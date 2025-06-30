@@ -18,6 +18,7 @@ const (
 	WriterStatusCode WriterState = iota
 	WriterHeaders
 	WriterBody
+	WriterTrailers
 )
 
 func NewWriter(w io.Writer) *Writer {
@@ -87,9 +88,20 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannont write length of end: %v", err)
 	}
-	_, err = w.writer.Write([]byte("\r\n"))
-	if err != nil {
-		return 0, fmt.Errorf("cannont write end: %v", err)
-	}
+	w.writerState = WriterTrailers
 	return doneLen, nil
+}
+
+func (w *Writer) WriteTrailers(t headers.Headers) error {
+	if w.writerState != WriterTrailers {
+		return fmt.Errorf("cannont write trailers done in state: %d", w.writerState)
+	}
+	for key, value := range t {
+		_, err := w.writer.Write([]byte(fmt.Sprintf("%s: %s\r\n", key, value)))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.writer.Write([]byte("\r\n"))
+	return err
 }

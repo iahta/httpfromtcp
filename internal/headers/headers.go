@@ -63,6 +63,10 @@ func (h Headers) OverrideContentLength() {
 	h[strings.ToLower("Transfer-Encoding")] = "chunked"
 }
 
+func (h Headers) AnnounceTrailer() {
+	h[strings.ToLower("Trailer")] = "X-Content-Sha256, X-Content-Length"
+}
+
 func validTokens(data []byte) bool {
 	for _, c := range data {
 		if !isTokenChar(c) {
